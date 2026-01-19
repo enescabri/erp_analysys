@@ -1,0 +1,43 @@
+version: 2
+
+sources:
+  # === WORKCUBE KAYNAK TABLOLARI ===
+  - name: raw_workcube
+    description: "Workcube ERP'den gelen ham veriler (Airflow tarafından yüklenir)"
+    database: erp_analytics
+    schema: raw_workcube
+    tables:
+      - name: SALESINVOICELINES
+        description: "Satış fatura satırları"
+        columns:
+          - name: SALESID
+            description: "Satır benzersiz ID"
+          - name: INVOICEDATE
+            description: "Fatura tarihi"
+
+  # === ODOO KAYNAK TABLOLARI ===
+  - name: raw_odoo
+    description: "Odoo ERP'den gelen ham veriler (Airflow tarafından yüklenir)"
+    database: erp_analytics
+    schema: raw_odoo
+    tables:
+      - name: sale_order
+        description: "Satış siparişleri (ana tablo)"
+
+      - name: sale_order_line
+        description: "Satış sipariş satırları"
+
+      - name: product_product
+        description: "Ürün varyantları"
+
+      - name: product_template
+        description: "Ürün şablonları"
+
+      - name: res_partner
+        description: "Müşteriler ve tedarikçiler"
+
+      - name: stock_warehouse
+        description: "Depolar"
+
+      - name: res_users
+        description: "Kullanıcılar (satış temsilcileri)"

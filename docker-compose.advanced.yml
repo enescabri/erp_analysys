@@ -1,0 +1,60 @@
+version: "3.8"
+
+# ================================================================
+# ERP ANALİZ PAKETİ - GELİŞMİŞ KURULUM
+# ================================================================
+# Bu dosya minimal kuruluma ek olarak:
+# - Airflow (Otomatik veri çekme)
+# - dbt (Veri dönüşümü)
+# servislerini içerir.
+#
+# Kullanım:
+# docker-compose -f docker-compose.minimal.yml -f docker-compose.advanced.yml up -d
+# ================================================================
+
+services:
+  # === DBT (Veri Dönüşüm Motoru) ===
+  dbt:
+    image: ghcr.io/dbt-labs/dbt-core:1.7.0
+    container_name: ${MUSTERI_ADI}_dbt
+    volumes:
+      - ./dbt_project:/usr/app
+      - ./dbt_profiles:/root/.dbt
+    working_dir: /usr/app
+    environment:
+      - DBT_PROFILES_DIR=/root/.dbt
+    depends_on:
+      - clickhouse
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+  # === AIRFLOW (Veri Orkestrasyon) ===
+  airflow:
+    image: apache/airflow:2.7.1-python3.10
+    container_name: ${MUSTERI_ADI}_airflow
+    restart: unless-stopped
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://superset:${SECRET_KEY}@postgres/superset_metadata
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=${SECRET_KEY}
+      - _PIP_ADDITIONAL_REQUIREMENTS=clickhouse-connect pymssql psycopg2-binary
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data/airflow_logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - clickhouse
+    command: >
+      bash -c "
+      airflow db init &&
+      airflow users create \
+        --username admin \
+        --firstname Admin \
+        --lastname User \
+        --role Admin \
+        --email admin@${DOMAIN:-localhost} \
+        --password ${SUPERSET_ADMIN_PASS} || true &&
+      airflow webserver & airflow scheduler
+      "

@@ -1,0 +1,20 @@
+erp_analytics:
+  target: prod
+  outputs:
+    prod:
+      type: clickhouse
+      schema: mart
+      host: clickhouse
+      port: 9000
+      user: default
+      password: ''
+      threads: 2
+
+      # ClickHouse özel ayarlar
+      secure: false
+      verify: false
+      cluster_mode: false
+
+      # Performans
+      connect_timeout: 30
+      send_receive_timeout: 300

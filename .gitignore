@@ -1,0 +1,46 @@
+# === VERİLER (Git'e atılmamalı!) ===
+data/
+*.db
+*.sqlite
+
+# === GİZLİ BİLGİLER ===
+# .env dosyası şablon olarak repo'da kalır
+# Gerçek müşteri .env'leri ignore edilir
+*_MUSTERI/.env
+*_Firma/.env
+TEST_*/.env
+*.pem
+*.key
+*.crt
+
+# === LOGLAR ===
+*.log
+logs/
+
+# === CACHE ===
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === İŞLETİM SİSTEMİ ===
+.DS_Store
+Thumbs.db
+tmpclaude-*
+
+# === TEST VE MÜŞTERI KLASÖRLERI ===
+# Sadece şablon klasör repo'da, müşteri kurulumları ignore
+TEST_KURULUM_*/
+TEST_FIRMA/
+*_MUSTERI/
+*_Firma/
+
+# === GEÇİCİ DOSYALAR ===
+*.tmp
+*.bak
+*.old

@@ -1,0 +1,40 @@
+name: 'erp_analytics'
+version: '1.0.0'
+config-version: 2
+
+# Profil bilgisi (profiles.yml'den gelir)
+profile: 'erp_analytics'
+
+# Model klasörleri
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+# Derleme çıktı klasörü
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Model yapılandırması
+models:
+  erp_analytics:
+    # Staging katmanı (Ham veriden temizlenmiş veri)
+    staging:
+      +materialized: view
+      +schema: staging
+
+    # Mart katmanı (İş mantığı uygulanmış, rapor için hazır)
+    mart:
+      +materialized: table
+      +schema: mart
+
+# Varsayılan ayarlar
+vars:
+  # Tarih filtreleri için
+  start_date: '2020-01-01'
+  # Workcube tablo ön eki (müşteriye göre değişir)
+  workcube_prefix: 'WRK_'

@@ -1,0 +1,308 @@
+# ================================================================
+# ERP ANALİZ PAKETİ - UBUNTU SERVER KURULUM KOMUTLARI
+# ================================================================
+# Bu dosyadaki komutları sırasıyla Ubuntu Server'da çalıştırın
+# SSH ile bağlandıktan sonra bu komutları copy-paste yapabilirsiniz
+# ================================================================
+
+# ----------------------------------------------------------------
+# ADIM 1: SİSTEMİ GÜNCELLE
+# ----------------------------------------------------------------
+sudo apt update && sudo apt upgrade -y
+
+# ----------------------------------------------------------------
+# ADIM 2: GEREKLI PAKETLER
+# ----------------------------------------------------------------
+sudo apt install -y curl wget git htop nano net-tools ca-certificates gnupg lsb-release
+
+# ----------------------------------------------------------------
+# ADIM 3: DOCKER KUR
+# ----------------------------------------------------------------
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+rm get-docker.sh
+
+# ----------------------------------------------------------------
+# ADIM 4: DOCKER COMPOSE KUR
+# ----------------------------------------------------------------
+sudo apt install -y docker-compose-plugin
+
+# ----------------------------------------------------------------
+# ADIM 5: DOCKER SERVİSİNİ BAŞLAT
+# ----------------------------------------------------------------
+sudo systemctl enable docker
+sudo systemctl start docker
+
+# ----------------------------------------------------------------
+# ADIM 6: DOCKER ÇALIŞIYOR MU KONTROL ET
+# ----------------------------------------------------------------
+docker --version
+docker compose version
+
+# ----------------------------------------------------------------
+# ADIM 7: FİREWALL AYARLARI (GÜVENLİK)
+# ----------------------------------------------------------------
+sudo apt install -y ufw
+sudo ufw --force enable
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow 22/tcp          # SSH
+sudo ufw allow 8088/tcp        # Superset
+sudo ufw status
+
+# ----------------------------------------------------------------
+# ADIM 8: SİSTEM OPTİMİZASYONU (ClickHouse için)
+# ----------------------------------------------------------------
+sudo tee -a /etc/sysctl.conf > /dev/null <<'EOF'
+
+# ERP Analiz Paketi - ClickHouse Optimizasyonu
+vm.swappiness = 10
+vm.overcommit_memory = 1
+net.core.somaxconn = 65535
+net.ipv4.tcp_max_syn_backlog = 8192
+EOF
+
+sudo sysctl -p
+
+# ----------------------------------------------------------------
+# ADIM 9: ÇALIŞMA DİZİNİ OLUŞTUR
+# ----------------------------------------------------------------
+mkdir -p ~/erp-analiz
+cd ~/erp-analiz
+
+# ----------------------------------------------------------------
+# ADIM 10: GITHUB'DAN REPO'YU KLONLA
+# ----------------------------------------------------------------
+# NOT: KULLANICI_ADI kısmını kendi GitHub kullanıcı adınızla değiştirin!
+
+git clone https://github.com/KULLANICI_ADI/erp_analiz_paketi.git
+cd erp_analiz_paketi
+
+# ----------------------------------------------------------------
+# ADIM 11: MÜŞTERİ KURULUMU OLUŞTUR
+# ----------------------------------------------------------------
+# NOT: ABC_MUSTERI yerine gerçek müşteri adını yazın
+
+MUSTERI="ABC_MUSTERI"
+
+mkdir -p ~/erp-analiz/$MUSTERI
+cp docker-compose.minimal.yml ~/erp-analiz/$MUSTERI/docker-compose.yml
+cp superset_config.py ~/erp-analiz/$MUSTERI/
+cp .env ~/erp-analiz/$MUSTERI/
+cp ofelia.ini ~/erp-analiz/$MUSTERI/
+cp -r dbt_project ~/erp-analiz/$MUSTERI/
+cp -r dbt_profiles ~/erp-analiz/$MUSTERI/
+mkdir -p ~/erp-analiz/$MUSTERI/logs
+
+cd ~/erp-analiz/$MUSTERI
+
+# ----------------------------------------------------------------
+# ADIM 12: .ENV DOSYASINI DÜZENLE
+# ----------------------------------------------------------------
+nano .env
+
+# Düzenlenecek satırlar:
+# MUSTERI_ADI=ABC_MUSTERI
+# ERP_DB_HOST=192.168.1.100
+# ERP_DB_NAME=WORKCUBE_ABC
+# ERP_DB_USER=raporlama
+# ERP_DB_PASSWORD=sifre123
+# SQL_QUERY_FILE=workcube_satislar.sql
+# WC_BASE_SCHEMA=workcube_prod
+# WC_PERIOD_YEAR=2026
+# WC_COMPANY_ID=1
+# SECRET_KEY=RASTGELE_256BIT_ANAHTAR
+#
+# Kaydetmek için: Ctrl+X, Y, Enter
+
+# ----------------------------------------------------------------
+# ADIM 13: DOCKER IMAGE'LERİNİ İNDİR (opsiyonel ama önerilir)
+# ----------------------------------------------------------------
+docker pull clickhouse/clickhouse-server:23.8-alpine &
+docker pull postgres:15-alpine &
+docker pull redis:7-alpine &
+docker pull ghcr.io/dbt-labs/dbt-clickhouse:1.7.0 &
+docker pull mcuadros/ofelia:latest &
+docker pull apache/superset:3.1.0 &
+wait
+
+# ----------------------------------------------------------------
+# ADIM 14: DOCKER SERVİSLERİNİ BAŞLAT
+# ----------------------------------------------------------------
+docker compose up -d
+
+# ----------------------------------------------------------------
+# ADIM 15: SERVİSLERİN HAZIR OLMASINI BEKLE (~2 dakika)
+# ----------------------------------------------------------------
+echo "Servisler başlatılıyor, 2 dakika bekleyin..."
+sleep 120
+
+# ----------------------------------------------------------------
+# ADIM 16: SERVİS DURUMUNU KONTROL ET
+# ----------------------------------------------------------------
+docker compose ps
+
+# Tüm servisler "Up" ve "(healthy)" görünmeli
+
+# ----------------------------------------------------------------
+# ADIM 17: SUPERSET ADMIN KULLANICISI OLUŞTUR
+# ----------------------------------------------------------------
+# NOT: ABC_MUSTERI yerine gerçek müşteri adını yazın
+
+MUSTERI="ABC_MUSTERI"
+
+docker exec -it ${MUSTERI}_superset superset fab create-admin \
+    --username admin \
+    --firstname Admin \
+    --lastname User \
+    --email admin@${MUSTERI}.com \
+    --password admin123
+
+docker exec -it ${MUSTERI}_superset superset db upgrade
+docker exec -it ${MUSTERI}_superset superset init
+
+# ----------------------------------------------------------------
+# ADIM 18: SİSTEM TESTİ
+# ----------------------------------------------------------------
+# ClickHouse test
+docker exec ${MUSTERI}_clickhouse clickhouse-client -q "SELECT 1"
+
+# Beklenen çıktı: 1
+
+# ----------------------------------------------------------------
+# ADIM 19: VERİ ÇEKME TESTİ (opsiyonel)
+# ----------------------------------------------------------------
+# ERP bağlantısı varsa test edin
+docker exec ${MUSTERI}_dbt python /usr/app/scripts/erp_to_clickhouse_v2.py
+
+# ----------------------------------------------------------------
+# ADIM 20: SUNUCU IP'SİNİ ÖĞREN
+# ----------------------------------------------------------------
+hostname -I
+
+# Bu IP'yi not edin. Superset'e tarayıcıdan erişmek için kullanacaksınız
+
+# ----------------------------------------------------------------
+# KURULUM TAMAMLANDI!
+# ----------------------------------------------------------------
+echo ""
+echo "================================================================"
+echo "   KURULUM TAMAMLANDI!"
+echo "================================================================"
+echo ""
+echo "Superset Dashboard: http://$(hostname -I | awk '{print $1}'):8088"
+echo "Kullanıcı: admin"
+echo "Şifre: admin123"
+echo ""
+echo "Kurulum klasörü: ~/erp-analiz/$MUSTERI"
+echo ""
+echo "================================================================"
+
+# ================================================================
+# YARALI KOMUTLAR (Sonra Kullanmak İçin)
+# ================================================================
+
+# Docker durumu
+docker compose ps
+
+# Logları izle
+docker compose logs -f
+
+# Belirli servisin logu
+docker compose logs superset -f
+docker compose logs clickhouse -f
+
+# Servisi yeniden başlat
+docker compose restart superset
+
+# Tümünü yeniden başlat
+docker compose restart
+
+# Durdur
+docker compose down
+
+# Başlat
+docker compose up -d
+
+# Veri çekme testi
+docker exec ${MUSTERI}_dbt python /usr/app/scripts/erp_to_clickhouse_v2.py
+
+# Ofelia (zamanlayıcı) logları
+docker logs ${MUSTERI}_scheduler -f
+
+# dbt çalıştır
+docker exec ${MUSTERI}_dbt dbt run
+
+# ClickHouse'a bağlan
+docker exec -it ${MUSTERI}_clickhouse clickhouse-client
+
+# Sistem kaynakları
+htop
+docker stats
+df -h
+
+# Yedekleme
+sudo tar -czf ~/erp-analiz/backup-$(date +%Y%m%d).tar.gz ~/erp-analiz/$MUSTERI/data/
+
+# Güncelleme (GitHub'dan)
+cd ~/erp-analiz/erp_analiz_paketi
+git pull
+cd ~/erp-analiz/$MUSTERI
+docker compose down
+docker compose pull
+docker compose up -d
+
+# ================================================================
+# ÖNEMLİ: DOCKER GRUBUNU AKTİF ET
+# ================================================================
+# Kurulum bittikten sonra docker komutlarını sudo olmadan çalıştırmak için:
+
+newgrp docker
+
+# VEYA oturumu kapatıp açın (logout/login)
+
+# ================================================================
+# SORUN GİDERME
+# ================================================================
+
+# Docker çalışmıyor?
+sudo systemctl status docker
+sudo systemctl start docker
+
+# Port zaten kullanılıyor?
+sudo netstat -tulpn | grep 8088
+sudo kill -9 PID_NUMARASI
+
+# Disk doldu?
+docker system prune -a
+docker volume prune
+
+# Container restart oluyor?
+docker logs ${MUSTERI}_superset
+docker inspect ${MUSTERI}_clickhouse | grep -A 10 Health
+
+# ================================================================
+# GÜVENLİK ÖNERİLERİ
+# ================================================================
+
+# 1. SSH şifre girişini kapat (key-based login)
+sudo nano /etc/ssh/sshd_config
+# PermitRootLogin no
+# PasswordAuthentication no
+sudo systemctl restart sshd
+
+# 2. Otomatik güvenlik güncellemeleri
+sudo apt install -y unattended-upgrades
+sudo dpkg-reconfigure --priority=low unattended-upgrades
+
+# 3. Fail2ban (brute force koruması)
+sudo apt install -y fail2ban
+sudo systemctl enable fail2ban
+
+# 4. ClickHouse'u internete AÇMAYIN!
+# docker-compose.yml'de:
+# ports:
+#   - "127.0.0.1:8123:8123"
+
+# ================================================================

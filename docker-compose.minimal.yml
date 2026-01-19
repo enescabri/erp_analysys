@@ -1,0 +1,138 @@
+version: "3.8"
+
+# ================================================================
+# ERP ANALİZ PAKETİ - MİNİMAL KURULUM
+# ================================================================
+# Bu versiyon sadece dashboard için gerekli servisleri içerir.
+# Airflow ve dbt isteğe bağlı olarak sonradan eklenebilir.
+# ================================================================
+
+services:
+  # === HIZLI ANALİTİK DEPO ===
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8-alpine
+    container_name: ${MUSTERI_ADI}_clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+    volumes:
+      - ./data/clickhouse:/var/lib/clickhouse
+    environment:
+      - CLICKHOUSE_DB=erp_analytics
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # === METADATA VERİTABANI ===
+  postgres:
+    image: postgres:15-alpine
+    container_name: ${MUSTERI_ADI}_postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=superset
+      - POSTGRES_PASSWORD=${SECRET_KEY}
+      - POSTGRES_DB=superset_metadata
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superset"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # === REDIS CACHE (Hız için kritik!) ===
+  redis:
+    image: redis:7-alpine
+    container_name: ${MUSTERI_ADI}_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # === DBT (Veri Dönüşüm Motoru) ===
+  dbt:
+    image: ghcr.io/dbt-labs/dbt-clickhouse:1.7.0
+    container_name: ${MUSTERI_ADI}_dbt
+    restart: unless-stopped
+    volumes:
+      - ./dbt_project:/usr/app
+      - ./dbt_profiles:/root/.dbt
+      - ./logs:/logs
+    working_dir: /usr/app
+    environment:
+      - DBT_PROFILES_DIR=/root/.dbt
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    command: tail -f /dev/null  # Uyku modunda bekle (Ofelia çalıştıracak)
+
+  # === OFELİA (Otomatik Görev Zamanlayıcı - Airflow'dan 100x Basit!) ===
+  ofelia:
+    image: mcuadros/ofelia:latest
+    container_name: ${MUSTERI_ADI}_scheduler
+    restart: unless-stopped
+    depends_on:
+      - dbt
+      - clickhouse
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ofelia.ini:/etc/ofelia/config.ini
+    command: daemon --config=/etc/ofelia/config.ini
+
+  # === SUPERSET (Dashboard Arayüzü) ===
+  superset:
+    image: apache/superset:3.0.0
+    container_name: ${MUSTERI_ADI}_superset
+    restart: unless-stopped
+    ports:
+      - "8088:8088"
+    environment:
+      - SUPERSET_CONFIG_PATH=/app/pythonpath/superset_config.py
+      - SECRET_KEY=${SECRET_KEY}
+    volumes:
+      - ./superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ./data/superset_home:/app/superset_home
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    command: >
+      bash -c "
+      echo '🔧 Superset hazırlanıyor...' &&
+      pip install --quiet clickhouse-connect pymssql psycopg2-binary cx_Oracle &&
+      superset db upgrade &&
+      superset fab create-admin \
+        --username admin \
+        --firstname Admin \
+        --lastname User \
+        --email admin@${DOMAIN:-localhost} \
+        --password ${SUPERSET_ADMIN_PASS} || true &&
+      superset init &&
+      echo '✅ Superset hazır! → http://localhost:8088' &&
+      gunicorn \
+        --bind 0.0.0.0:8088 \
+        --workers 2 \
+        --worker-class gthread \
+        --threads 4 \
+        --timeout 120 \
+        --limit-request-line 0 \
+        --limit-request-field_size 0 \
+        'superset.app:create_app()'
+      "
+
+# === NETWORK ===
+networks:
+  default:
+    name: ${MUSTERI_ADI}_network

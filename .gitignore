@@ -4,14 +4,19 @@ data/
 *.sqlite
 
 # === GİZLİ BİLGİLER ===
-# .env dosyası şablon olarak repo'da kalır
-# Gerçek müşteri .env'leri ignore edilir
+# ÖNEMLİ: .env dosyası GİTHUB'A GİTMEMELİ!
+# Sadece .env.example şablon olarak repo'da
+.env
+.env.local
+.env.production
 *_MUSTERI/.env
 *_Firma/.env
 TEST_*/.env
 *.pem
 *.key
 *.crt
+credentials.json
+secrets.yml
 
 # === LOGLAR ===
 *.log

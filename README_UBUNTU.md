@@ -109,7 +109,7 @@ mkdir -p ~/erp-analiz/$MUSTERI
 # Dosyaları kopyala
 cp docker-compose.minimal.yml ~/erp-analiz/$MUSTERI/docker-compose.yml
 cp superset_config.py ~/erp-analiz/$MUSTERI/
-cp .env ~/erp-analiz/$MUSTERI/
+cp .env.example ~/erp-analiz/$MUSTERI/.env
 cp ofelia.ini ~/erp-analiz/$MUSTERI/
 cp -r dbt_project ~/erp-analiz/$MUSTERI/
 cp -r dbt_profiles ~/erp-analiz/$MUSTERI/

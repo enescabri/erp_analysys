@@ -10,13 +10,13 @@ version: "3.8"
 services:
   # === HIZLI ANALİTİK DEPO ===
   clickhouse:
-    image: clickhouse/clickhouse-server:23.8-alpine
+    image: clickhouse/clickhouse-server:latest
     container_name: ${MUSTERI_ADI}_clickhouse
     restart: unless-stopped
     ports:
       - "8123:8123"
     volumes:
-      - ./data/clickhouse:/var/lib/clickhouse
+      - clickhouse_data:/var/lib/clickhouse
     environment:
       - CLICKHOUSE_DB=erp_analytics
     ulimits:
@@ -31,15 +31,16 @@ services:
 
   # === METADATA VERİTABANI ===
   postgres:
-    image: postgres:15-alpine
+    image: postgres:latest
     container_name: ${MUSTERI_ADI}_postgres
     restart: unless-stopped
     environment:
       - POSTGRES_USER=superset
       - POSTGRES_PASSWORD=${SECRET_KEY}
       - POSTGRES_DB=superset_metadata
+      - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U superset"]
       interval: 10s
@@ -48,10 +49,12 @@ services:
 
   # === REDIS CACHE (Hız için kritik!) ===
   redis:
-    image: redis:7-alpine
+    image: redis:latest
     container_name: ${MUSTERI_ADI}_redis
     restart: unless-stopped
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -60,7 +63,7 @@ services:
 
   # === DBT (Veri Dönüşüm Motoru) ===
   dbt:
-    image: ghcr.io/dbt-labs/dbt-clickhouse:1.7.0
+    image: ghcr.io/dbt-labs/dbt-core:latest
     container_name: ${MUSTERI_ADI}_dbt
     restart: unless-stopped
     volumes:
@@ -90,7 +93,7 @@ services:
 
   # === SUPERSET (Dashboard Arayüzü) ===
   superset:
-    image: apache/superset:3.0.0
+    image: apache/superset:latest
     container_name: ${MUSTERI_ADI}_superset
     restart: unless-stopped
     ports:
@@ -100,7 +103,7 @@ services:
       - SECRET_KEY=${SECRET_KEY}
     volumes:
       - ./superset_config.py:/app/pythonpath/superset_config.py:ro
-      - ./data/superset_home:/app/superset_home
+      - superset_home:/app/superset_home
     depends_on:
       postgres:
         condition: service_healthy
@@ -131,6 +134,13 @@ services:
         --limit-request-field_size 0 \
         'superset.app:create_app()'
       "
+
+# === VOLUMES (Docker yönetir, izin sorunu olmaz) ===
+volumes:
+  clickhouse_data:
+  postgres_data:
+  redis_data:
+  superset_home:
 
 # === NETWORK ===
 networks:

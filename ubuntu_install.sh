@@ -193,7 +193,7 @@ mkdir -p "$MUSTERI_DIR"
 # Dosyaları kopyala
 cp docker-compose.minimal.yml "$MUSTERI_DIR/docker-compose.yml"
 cp superset_config.py "$MUSTERI_DIR/"
-cp .env "$MUSTERI_DIR/"
+cp .env.example "$MUSTERI_DIR/.env"
 cp ofelia.ini "$MUSTERI_DIR/"
 
 # dbt klasörlerini kopyala
@@ -202,6 +202,9 @@ cp -r dbt_profiles "$MUSTERI_DIR/"
 
 # Logs klasörü
 mkdir -p "$MUSTERI_DIR/logs"
+
+# NOT: Named volumes kullanıldığı için data/ klasörü oluşturmaya gerek yok
+# Docker otomatik yönetecek
 
 log "Dosyalar kopyalandı: $MUSTERI_DIR"
 
@@ -241,12 +244,12 @@ nano .env
 # ================================================================
 log "Docker image'leri indiriliyor (bu biraz zaman alabilir)..."
 
-docker pull clickhouse/clickhouse-server:23.8-alpine &
-docker pull postgres:15-alpine &
-docker pull redis:7-alpine &
-docker pull ghcr.io/dbt-labs/dbt-clickhouse:1.7.0 &
+docker pull clickhouse/clickhouse-server:latest &
+docker pull postgres:latest &
+docker pull redis:latest &
+docker pull ghcr.io/dbt-labs/dbt-core:latest &
 docker pull mcuadros/ofelia:latest &
-docker pull apache/superset:3.1.0 &
+docker pull apache/superset:latest &
 
 # Tüm pull işlemlerinin bitmesini bekle
 wait

@@ -75,7 +75,7 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-    command: tail -f /dev/null
+    command: ["tail", "-f", "/dev/null"]
 
   # === OFELİA (Otomatik Görev Zamanlayıcı) ===
   ofelia:

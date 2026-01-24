@@ -1,0 +1,149 @@
+# ================================================================
+# UBUNTU SERVER - HIZLI GÜNCELLEME (dbt restart fix)
+# ================================================================
+# Tarih: 2026-01-24 23:30
+# Sorun: dbt container sürekli restart oluyor
+# Çözüm: GitHub'dan son versiyonu çek ve güncelle
+# ================================================================
+
+# ADIM 1: GitHub'dan son versiyonu çek
+cd ~/erp-analiz/erp_analiz_paketi
+git pull
+
+# ADIM 2: Güncellenen dosyayı kopyala
+cp docker-compose.minimal.yml ~/erp-analiz/SIRKET$/docker-compose.yml
+
+# ADIM 3: dbt container'ını yeniden oluştur
+cd ~/erp-analiz/SIRKET$
+docker compose stop dbt
+docker compose rm -f dbt
+docker compose up -d dbt
+
+# ADIM 4: Kontrol et
+docker compose ps
+
+# Beklenen çıktı:
+# CabriBT_dbt   ghcr.io/dbt-labs/dbt-core:latest   Up
+
+# ================================================================
+# SORUN DÜZELDİ Mİ? DEVAM ET!
+# ================================================================
+
+# ADIM 5: .env dosyasını düzenle (ERP bağlantı bilgileri)
+nano .env
+
+# Düzenlenecek satırlar:
+#
+# ERP_DB_HOST=192.168.1.100           # ERP veritabanı IP adresi
+# ERP_DB_NAME=WORKCUBE_CABRIBISIKLET  # ERP veritabanı adı
+# ERP_DB_USER=raporlama               # ERP kullanıcı adı
+# ERP_DB_PASSWORD=sifre123            # ERP şifresi
+#
+# WC_BASE_SCHEMA=workcube_prod        # Workcube şema adı
+# WC_PERIOD_YEAR=2026                 # Dönem yılı
+# WC_COMPANY_ID=1                     # Şirket ID
+#
+# Kaydet: Ctrl+X, Y, Enter
+
+# ================================================================
+# VERİ AKIŞI TESTİ
+# ================================================================
+
+# ADIM 6: ERP'den ClickHouse'a veri çekme testi
+docker exec CabriBT_dbt python /usr/app/scripts/erp_to_clickhouse_v2.py
+
+# Beklenen çıktı:
+# ✅ ERP bağlantısı başarılı
+# ✅ Veri çekildi: X satır
+# ✅ ClickHouse'a yazıldı
+
+# ADIM 7: dbt transformasyonlarını çalıştır
+docker exec CabriBT_dbt dbt run
+
+# Beklenen çıktı:
+# Running with dbt=1.x.x
+# Found X models, Y tests, Z sources
+# Completed successfully
+
+# ADIM 8: ClickHouse'da veriyi kontrol et
+docker exec -it CabriBT_clickhouse clickhouse-client
+
+# ClickHouse içinde:
+SHOW TABLES;
+SELECT COUNT(*) FROM erp_analytics.satislar;
+exit
+
+# ================================================================
+# SUPERSET'TE CLICKHOUSE BAĞLANTISI
+# ================================================================
+
+# Tarayıcıdan Superset'i aç:
+# http://UBUNTU-IP:8088
+
+# Giriş:
+# Kullanıcı: admin
+# Şifre: admin123 (veya .env'de belirlediğiniz)
+
+# Superset'te:
+# 1. Settings > Database Connections > + Database
+# 2. ClickHouse seç
+# 3. Bağlantı bilgileri:
+#    Host: clickhouse
+#    Port: 8123
+#    Database: erp_analytics
+#    Username: default
+#    Password: (boş bırak)
+# 4. Test Connection
+# 5. Connect
+
+# ================================================================
+# OTOMATIK VERİ ÇEKME AYARI (Ofelia)
+# ================================================================
+
+# ofelia.ini dosyasını kontrol et
+cat ofelia.ini
+
+# Ofelia loglarını izle
+docker logs CabriBT_scheduler -f
+
+# Zamanlanmış görevler çalışıyor mu?
+# Ofelia her gece saat 02:00'da otomatik veri çekecek
+
+# ================================================================
+# YARINLI KOMUTLAR
+# ================================================================
+
+# Tüm servislerin durumu
+docker compose ps
+
+# Logları izle
+docker compose logs -f
+
+# Belirli bir servisin logu
+docker compose logs clickhouse -f
+docker compose logs superset -f
+docker compose logs dbt -f
+
+# Servisi yeniden başlat
+docker compose restart dbt
+
+# Tüm servisleri yeniden başlat
+docker compose restart
+
+# Durdur
+docker compose down
+
+# Başlat
+docker compose up -d
+
+# Manuel veri çekme
+docker exec CabriBT_dbt python /usr/app/scripts/erp_to_clickhouse_v2.py
+
+# Sistem kaynakları
+docker stats
+htop
+df -h
+
+# ================================================================
+# BAŞARILAR! 🎉
+# ================================================================
